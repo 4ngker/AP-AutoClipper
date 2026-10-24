@@ -1,5 +1,6 @@
 import streamlit as st
 from google import genai
+from google.genai.errors import APIError
 import yt_dlp
 import os
 import subprocess
@@ -37,13 +38,15 @@ if st.button("🚀 Mulai Proses Video", type="primary"):
             
             with st.status("📥 Mengambil metadata dan transkrip video...", expanded=True) as status:
                 
+                # Menggunakan javascript runtime Node.js yang sudah kita pasang di sistem cloud
                 ydl_opts = {
                     'extract_flat': False,
                     'skip_download': True,
                     'writesubtitles': True,
                     'writeautomaticsubtext': True,
                     'params': {
-                        'remote_components': 'ejs:github'
+                        'remote_components': 'ejs:github',
+                        'js_runtimes': 'node'
                     }
                 }
                 
@@ -53,7 +56,7 @@ if st.button("🚀 Mulai Proses Video", type="primary"):
                     video_description = info.get('description', '')
                     duration = info.get('duration', 0)
                 
-                status.update(label="🤖 Gemini AI sedang menganalisis struktur menit terbaik...", state="running")
+                status.update(label="🤖 Gemini 3.8 AI sedang menganalisis struktur menit terbaik...", state="running")
                 st.write(f"Menganalisis video: **{video_title}**")
                 
                 prompt = f"""
@@ -73,22 +76,23 @@ if st.button("🚀 Mulai Proses Video", type="primary"):
                 }}
                 """
                 
-                # SISTEM AUTO-RETRY OTOMATIS JIKA SERVER GOOGLE PADAT
+                # SISTEM PENANGANAN TRAFIK PADAT SIBUK (ANTI-ERROR 503)
                 response = None
-                max_retries = 3
+                max_retries = 5
                 for attempt in range(max_retries):
                     try:
                         response = client.models.generate_content(
-                            model='gemini-2.5-flash',
+                            model='gemini-3.8-flash',
                             contents=prompt
                         )
-                        break # Sukses, keluar dari loop retry
+                        break
                     except Exception as ai_err:
-                        if attempt < max_retries - 1:
-                            st.warning(f"Server Google sedang sibuk (Mencoba kembali otomatis dalam 5 detik... Percobaan {attempt+1}/{max_retries})")
-                            time.sleep(5)
+                        # Jika server sibuk (503), kita tunggu dan coba lagi otomatis
+                        if "503" in str(ai_err) and attempt < max_retries - 1:
+                            st.warning(f"Server Google Gemini 3.8 sedang penuh antrean. Mencoba menembus server kembali dalam 6 detik... (Percobaan {attempt+1}/{max_retries})")
+                            time.sleep(6)
                         else:
-                            raise ai_err # Lempar eror jika sudah 3 kali gagal
+                            raise ai_err
                 
                 res_data = json.loads(clean_json_response(response.text))
                 
@@ -98,7 +102,7 @@ if st.button("🚀 Mulai Proses Video", type="primary"):
                 
                 status.update(label="🎬 Mengekstrak streaming langsung & melakukan Center Crop (9:16)...", state="running")
                 
-                with yt_dlp.YoutubeDL({'format': 'best[ext=mp4]/best', 'params': {'remote_components': 'ejs:github'}}) as ydl:
+                with yt_dlp.YoutubeDL({'format': 'best[ext=mp4]/best', 'params': {'remote_components': 'ejs:github', 'js_runtimes': 'node'}}) as ydl:
                     real_info = ydl.extract_info(youtube_url, download=False)
                     stream_url = real_info['url']
                 
@@ -126,7 +130,7 @@ if st.button("🚀 Mulai Proses Video", type="primary"):
             col1, col2 = st.columns(2)
             
             with col1:
-                st.success("### 📝 Metadata Buatan Gemini")
+                st.success("### 📝 Metadata Buatan Gemini 3.8")
                 st.markdown(f"**Judul Konten:**\n```\n{res_data['title']}\n```")
                 st.markdown(f"**Deskripsi & Tag:**\n```\n{res_data['description']}\n```")
             
@@ -145,4 +149,4 @@ if st.button("🚀 Mulai Proses Video", type="primary"):
                     )
         
         except Exception as e:
-            st.error(f"Terjadi kesalahan teknis: {str(e)}\n\nTips: Silakan tunggu beberapa saat lalu klik tombol 'Mulai Proses Video' kembali.")
+            st.error(f"Terjadi kesalahan teknis: {str(e)}\n\nTips: Jika server Google membatasi akses, silakan tunggu 1 menit lalu coba klik ulang tombol proses.")
