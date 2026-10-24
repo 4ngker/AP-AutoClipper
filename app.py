@@ -6,7 +6,7 @@ import subprocess
 import re
 import json
 
-st.set_page_config(page_title="Gemini Auto Clipper AI", layout="wide", page_icon="🎬")
+st.set_page_config(page_title="Angker Project - AI Auto Clipper", layout="wide", page_icon="🎬")
 
 st.title("🎬 Angker Project - AI Auto Clipper")
 st.caption("Potong video YouTube otomatis format FYP (9:16) langsung di Cloud memanfaatkan Gemini 2.5 Flash.")
