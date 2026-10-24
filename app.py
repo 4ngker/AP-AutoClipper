@@ -37,7 +37,7 @@ if st.button("🚀 Mulai Proses Video", type="primary"):
             
             with st.status("📥 Mengambil metadata dan transkrip video...", expanded=True) as status:
                 
-                # Optimasi opsi untuk meredam Warning JavaScript Runtime di cloud
+                # Gunakan parameter universal agar aman membaca info dasar video dari server mana pun
                 ydl_opts = {
                     'extract_flat': False,
                     'skip_download': True,
@@ -73,7 +73,7 @@ if st.button("🚀 Mulai Proses Video", type="primary"):
                 }}
                 """
                 
-                # SISTEM RETRY AGRESIF (MENGATASI ERROR 503 SERVER PADAT)
+                # SISTEM RETRY AGRESIF (MENGATASI ERROR JIKA SERVER GOOGLE PADAT)
                 response = None
                 max_retries = 5
                 wait_time = 5
@@ -87,9 +87,9 @@ if st.button("🚀 Mulai Proses Video", type="primary"):
                         break
                     except Exception as ai_err:
                         if "503" in str(ai_err) and attempt < max_retries - 1:
-                            st.warning(f"Server Google Gemini sedang sibuk. Mencoba menembus antrean kembali dalam {wait_time} detik... (Percobaan {attempt+1}/{max_retries})")
+                            st.warning(f"Server Google Gemini sedang sibuk. Mencoba kembali dalam {wait_time} detik... ({attempt+1}/{max_retries})")
                             time.sleep(wait_time)
-                            wait_time += 3 # Jeda waktu diperpanjang bertahap agar aman
+                            wait_time += 3
                         else:
                             raise ai_err
                 
@@ -101,26 +101,41 @@ if st.button("🚀 Mulai Proses Video", type="primary"):
                 
                 status.update(label="🎬 Mengekstrak streaming langsung & melakukan Center Crop (9:16)...", state="running")
                 
-                with yt_dlp.YoutubeDL({'format': 'best[ext=mp4]/best', 'quiet': True, 'no_warnings': True}) as ydl:
+                # UPDATE: Menggunakan format universal 'bestvideo+bestaudio/best' untuk stabilitas ekstra di Cloud
+                with yt_dlp.YoutubeDL({'format': 'bestvideo+bestaudio/best', 'quiet': True, 'no_warnings': True}) as ydl:
                     real_info = ydl.extract_info(youtube_url, download=False)
-                    stream_url = real_info['url']
+                    # Menangani format jika video dan audio terpisah (Dapatkan URL masing-masing komponen)
+                    if 'requested_formats' in real_info:
+                        video_url = real_info['requested_formats'][0]['url']
+                        audio_url = real_info['requested_formats'][1]['url']
+                        
+                        ffmpeg_cmd = [
+                            'ffmpeg',
+                            '-ss', res_data['start_time'], '-to', res_data['end_time'], '-i', video_url,
+                            '-ss', res_data['start_time'], '-to', res_data['end_time'], '-i', audio_url,
+                            '-vf', "crop=ih*(9/16):ih",
+                            '-c:v', 'libx264', '-preset', 'veryfast',
+                            '-c:a', 'aac', '-map', '0:v:0', '-map', '1:a:0',
+                            '-y', "fyp_clip.mp4"
+                        ]
+                    else:
+                        # Jika kebetulan format gabungan langsung tersedia
+                        stream_url = real_info['url']
+                        ffmpeg_cmd = [
+                            'ffmpeg',
+                            '-ss', res_data['start_time'], '-to', res_data['end_time'], '-i', stream_url,
+                            '-vf', "crop=ih*(9/16):ih",
+                            '-c:v', 'libx264', '-preset', 'veryfast',
+                            '-c:a', 'aac',
+                            '-y', "fyp_clip.mp4"
+                        ]
                 
                 output_filename = "fyp_clip.mp4"
                 if os.path.exists(output_filename):
-                    os.remove(output_filename)
+                    try: os.remove(output_filename)
+                    except: pass
                 
-                ffmpeg_cmd = [
-                    'ffmpeg',
-                    '-ss', res_data['start_time'],
-                    '-to', res_data['end_time'],
-                    '-i', stream_url,
-                    '-vf', "crop=ih*(9/16):ih", 
-                    '-c:v', 'libx264',
-                    '-preset', 'veryfast',
-                    '-c:a', 'aac',
-                    '-y', output_filename
-                ]
-                
+                # Jalankan perintah perakitan klip video vertikal
                 subprocess.run(ffmpeg_cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                 status.update(label="🎉 Klip video FYP Anda siap!", state="complete")
             
@@ -148,4 +163,4 @@ if st.button("🚀 Mulai Proses Video", type="primary"):
                     )
         
         except Exception as e:
-            st.error(f"Terjadi kesalahan teknis: {str(e)}\n\nTips: Silakan tunggu sekitar 30 detik lalu coba klik ulang tombol 'Mulai Proses Video'.")
+            st.error(f"Terjadi kesalahan teknis: {str(e)}\n\nTips: Silakan tunggu beberapa saat lalu coba klik kembali tombol 'Mulai Proses Video'.")
