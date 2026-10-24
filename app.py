@@ -9,12 +9,12 @@ import json
 st.set_page_config(page_title="Angker Project - AI Auto Clipper", layout="wide", page_icon="🎬")
 
 st.title("🎬 Angker Project - AI Auto Clipper")
-st.caption("Potong video YouTube otomatis tanpa download by Angker Project.")
+st.caption("Potong video YouTube otomatis tanpa download penuh. Menggunakan Gemini 3.8 Flash Terbaru.")
 
 # Input Kredensial & Link
 with st.sidebar:
     st.header("🔑 Pengaturan API")
-    api_key = st.text_input("Masukkan API Key:", type="password")
+    api_key = st.text_input("Masukkan Gemini API Key:", type="password")
 
 youtube_url = st.text_input("🔗 Tempel Link YouTube di sini:", placeholder="https://youtube.com...")
 
@@ -35,7 +35,6 @@ if st.button("🚀 Mulai Proses Video", type="primary"):
             
             with st.status("📥 Mengambil metadata dan transkrip video...", expanded=True) as status:
                 
-                # Strategi Baru: Ambil Info Teks & Transkrip Saja (Sangat Cepat & Aman dari Blokir)
                 ydl_opts = {
                     'extract_flat': False,
                     'skip_download': True,
@@ -49,17 +48,16 @@ if st.button("🚀 Mulai Proses Video", type="primary"):
                     video_description = info.get('description', '')
                     duration = info.get('duration', 0)
                     
-                    # Coba ambil potongan teks subtitle/transkrip otomatis jika ada
                     subtitles_text = ""
                     if 'automatic_captions' in info and 'id' in info['automatic_captions']:
                         subtitles_text = "Transkrip otomatis tersedia di video asli."
                 
-                status.update(label="🤖 Gemini AI sedang menganalisis struktur menit terbaik...", state="running")
+                status.update(label="🤖 Gemini 3.8 AI sedang menganalisis struktur menit terbaik...", state="running")
                 st.write(f"Menganalisis video: **{video_title}**")
                 
-                # Kirim data teks ke Gemini untuk menentukan pemotongan terbaik
+                # Kirim data teks ke Gemini 3.8
                 prompt = f"""
-                Anda adalah seorang ahli editor video TikTok/Shorts dan pakar algoritma FYP.
+                Anda adalah seorang ahli editor video TikTok/Shorts dan pakar profesi algoritma FYP.
                 Saya memiliki video YouTube berjudul "{video_title}" dengan durasi total {duration} detik.
                 Deskripsi video: {video_description[:1000]}
 
@@ -75,8 +73,9 @@ if st.button("🚀 Mulai Proses Video", type="primary"):
                 }}
                 """
                 
+                # UPDATE: Menggunakan model teranyar 'gemini-3.8-flash' sesuai regulasi Google AI
                 response = client.models.generate_content(
-                    model='gemini-2.5-flash',
+                    model='gemini-3.8-flash',
                     contents=prompt
                 )
                 
@@ -88,7 +87,6 @@ if st.button("🚀 Mulai Proses Video", type="primary"):
                 
                 status.update(label="🎬 Mengekstrak streaming langsung & melakukan Center Crop (9:16)...", state="running")
                 
-                # Dapatkan URL streaming langsung video kualitas gabungan terbaik lewat yt-dlp
                 with yt_dlp.YoutubeDL({'format': 'best[ext=mp4]/best'}) as ydl:
                     real_info = ydl.extract_info(youtube_url, download=False)
                     stream_url = real_info['url']
@@ -97,13 +95,12 @@ if st.button("🚀 Mulai Proses Video", type="primary"):
                 if os.path.exists(output_filename):
                     os.remove(output_filename)
                 
-                # Eksekusi pemotongan langsung menggunakan FFmpeg tanpa mengunduh file mentah ke disk cloud
                 ffmpeg_cmd = [
                     'ffmpeg',
                     '-ss', res_data['start_time'],
                     '-to', res_data['end_time'],
                     '-i', stream_url,
-                    '-vf', "crop=ih*(9/16):ih", # Crop format vertikal pas di tengah layar
+                    '-vf', "crop=ih*(9/16):ih", 
                     '-c:v', 'libx264',
                     '-preset', 'veryfast',
                     '-c:a', 'aac',
@@ -118,7 +115,7 @@ if st.button("🚀 Mulai Proses Video", type="primary"):
             col1, col2 = st.columns(2)
             
             with col1:
-                st.success("### 📝 Metadata Buatan Gemini")
+                st.success("### 📝 Metadata Buatan Gemini 3.8")
                 st.markdown(f"**Judul Konten:**\n```\n{res_data['title']}\n```")
                 st.markdown(f"**Deskripsi & Tag:**\n```\n{res_data['description']}\n```")
             
