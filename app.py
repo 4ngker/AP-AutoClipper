@@ -9,12 +9,13 @@ import json
 st.set_page_config(page_title="Angker Project - AI Auto Clipper", layout="wide", page_icon="🎬")
 
 st.title("🎬 Angker Project - AI Auto Clipper")
-st.caption("Potong video YouTube otomatis tanpa download penuh. Menggunakan Gemini 3.8 Flash Terbaru.")
+st.caption("Potong video YouTube otomatis tanpa download by Angker Project.")
 
-# Input Kredensial & Link
+# Input Kredensial & Link di Sidebar
 with st.sidebar:
     st.header("🔑 Pengaturan API")
     api_key = st.text_input("Masukkan Gemini API Key:", type="password")
+    st.markdown("[Dapatkan API Key Gratis di Google AI Studio](https://google.com)")
 
 youtube_url = st.text_input("🔗 Tempel Link YouTube di sini:", placeholder="https://youtube.com...")
 
@@ -35,11 +36,15 @@ if st.button("🚀 Mulai Proses Video", type="primary"):
             
             with st.status("📥 Mengambil metadata dan transkrip video...", expanded=True) as status:
                 
+                # Menambahkan 'remote-components' untuk mengunduh modul EJS anti-blokir langsung dari GitHub
                 ydl_opts = {
                     'extract_flat': False,
                     'skip_download': True,
                     'writesubtitles': True,
                     'writeautomaticsubtext': True,
+                    'params': {
+                        'remote_components': 'ejs:github'
+                    }
                 }
                 
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -47,21 +52,16 @@ if st.button("🚀 Mulai Proses Video", type="primary"):
                     video_title = info.get('title', 'Video')
                     video_description = info.get('description', '')
                     duration = info.get('duration', 0)
-                    
-                    subtitles_text = ""
-                    if 'automatic_captions' in info and 'id' in info['automatic_captions']:
-                        subtitles_text = "Transkrip otomatis tersedia di video asli."
                 
-                status.update(label="🤖 Gemini 3.8 AI sedang menganalisis struktur menit terbaik...", state="running")
+                status.update(label="🤖 Gemini AI sedang menganalisis struktur menit terbaik...", state="running")
                 st.write(f"Menganalisis video: **{video_title}**")
                 
-                # Kirim data teks ke Gemini 3.8
                 prompt = f"""
                 Anda adalah seorang ahli editor video TikTok/Shorts dan pakar profesi algoritma FYP.
                 Saya memiliki video YouTube berjudul "{video_title}" dengan durasi total {duration} detik.
                 Deskripsi video: {video_description[:1000]}
 
-                Tugas Anda: Berdasarkan data di atas, bayangkan isi videonya dan tentukan SATU rentang waktu (durasi 15 sampai 45 detik) yang paling klimaks, kontroversial, atau menarik untuk dijadikan video Shorts vertikal. Rentang waktu tidak boleh melebihi durasi total video ({duration} detik).
+                Tugas Anda: Berdasarkan data di atas, tentukan SATU rentang waktu (durasi 15 sampai 45 detik) yang paling klimaks, kontroversial, atau menarik untuk dijadikan video Shorts vertikal. Rentang waktu tidak boleh melebihi durasi total video ({duration} detik).
                 
                 Format RESPONS HARUS berupa JSON bersih tanpa penjelasan teks tambahan di luar kurung kurawal:
                 {{
@@ -73,9 +73,8 @@ if st.button("🚀 Mulai Proses Video", type="primary"):
                 }}
                 """
                 
-                # UPDATE: Menggunakan model teranyar 'gemini-3.8-flash' sesuai regulasi Google AI
                 response = client.models.generate_content(
-                    model='gemini-3.8-flash',
+                    model='gemini-1.5-flash',
                     contents=prompt
                 )
                 
@@ -87,7 +86,8 @@ if st.button("🚀 Mulai Proses Video", type="primary"):
                 
                 status.update(label="🎬 Mengekstrak streaming langsung & melakukan Center Crop (9:16)...", state="running")
                 
-                with yt_dlp.YoutubeDL({'format': 'best[ext=mp4]/best'}) as ydl:
+                # Penyesuaian parameter streaming aman untuk memotong video secara fisik
+                with yt_dlp.YoutubeDL({'format': 'best[ext=mp4]/best', 'params': {'remote_components': 'ejs:github'}}) as ydl:
                     real_info = ydl.extract_info(youtube_url, download=False)
                     stream_url = real_info['url']
                 
@@ -115,7 +115,7 @@ if st.button("🚀 Mulai Proses Video", type="primary"):
             col1, col2 = st.columns(2)
             
             with col1:
-                st.success("### 📝 Metadata Buatan Gemini 3.8")
+                st.success("### 📝 Metadata Buatan Gemini")
                 st.markdown(f"**Judul Konten:**\n```\n{res_data['title']}\n```")
                 st.markdown(f"**Deskripsi & Tag:**\n```\n{res_data['description']}\n```")
             
@@ -134,4 +134,4 @@ if st.button("🚀 Mulai Proses Video", type="primary"):
                     )
         
         except Exception as e:
-            st.error(f"Terjadi kesalahan teknis: {str(e)}")
+            st.error(f"Terjadi kesalahan teknis: {str(e)}\n\nTips: Jika server Google sedang padat, silakan klik tombol 'Mulai Proses Video' lagi dalam 10-30 detik.")
