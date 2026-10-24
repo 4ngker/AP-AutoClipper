@@ -91,10 +91,26 @@ if st.button("🚀 Mulai Proses Video", type="primary"):
                 }}
                 """
                 
-                response = client.models.generate_content(
-                    model='gemini-3.8-flash',
-                    contents=prompt
-                )
+                # IMPLEMENTASI RETRY OTOMATIS JIKA SERVER GEMINI BUSY (503)
+                response = None
+                max_retries = 5
+                wait_time = 4
+                
+                for attempt in range(max_retries):
+                    try:
+                        response = client.models.generate_content(
+                            model='gemini-2.5-flash',
+                            contents=prompt
+                        )
+                        break
+                    except Exception as ai_err:
+                        # Jika terdeteksi masalah kelebihan beban server (503 / UNAVAILABLE)
+                        if ("503" in str(ai_err) or "UNAVAILABLE" in str(ai_err)) and attempt < max_retries - 1:
+                            st.warning(f"Server Google Gemini sedang padat. Mencoba kembali otomatis dalam {wait_time} detik... ({attempt+1}/{max_retries})")
+                            time.sleep(wait_time)
+                            wait_time += 3  # Menambah jeda waktu tunggu secara bertahap
+                        else:
+                            raise ai_err
                 
                 res_data = json.loads(clean_json_response(response.text))
                 st.session_state.res_data = res_data
@@ -107,10 +123,9 @@ if st.button("🚀 Mulai Proses Video", type="primary"):
                 
                 raw_download_template = "full_downloaded_video.mp4"
                 
-                # PERBAIKAN MANIFES: Menambahkan header penyamaran lengkap agar bypass HTTP 403 & 502
                 ydl_opts_download = {
                     'format': 'bestvideo+bestaudio/best',
-                    'format_sort': ['vcodec:h264', 'res:480', 'acodec:aac'], # Batasi ke 480p agar download sangat cepat di cloud
+                    'format_sort': ['vcodec:h264', 'res:480', 'acodec:aac'],
                     'merge_output_format': 'mp4',
                     'outtmpl': raw_download_template,
                     'quiet': True,
