@@ -50,12 +50,10 @@ if st.button("🚀 Mulai Proses Video", type="primary"):
             
             client = genai.Client(api_key=api_key)
             
-            with st.status("📥 Mengambil metadata dan transkrip video...", expanded=True) as status:
+            with st.status("📥 Mengambil metadata video...", expanded=True) as status:
                 ydl_opts = {
                     'extract_flat': False,
                     'skip_download': True,
-                    'writesubtitles': True,
-                    'writeautomaticsubtext': True,
                     'quiet': True,
                     'no_warnings': True,
                 }
@@ -112,23 +110,21 @@ if st.button("🚀 Mulai Proses Video", type="primary"):
                 st.info(f"**Alasan Pilihan AI:** {res_data['reason']}")
                 st.metric("Target Potongan Waktu", f"{res_data['start_time']} - {res_data['end_time']}")
                 
-                status.update(label="🎬 Mengunduh & memotong video secara aman...", state="running")
+                status.update(label="🎬 Mengunduh video dasar dari YouTube secara utuh...", state="running")
                 
-                # Menggunakan fitur download bagian tertentu (download sections) bawaan yt-dlp secara presisi
+                # Mengunduh video format ringan (18 = 360p mp4 dengan audio terintegrasi)
+                # Ini cara paling aman agar tidak diblokir status 403 oleh server YouTube
+                raw_download_template = "full_downloaded_video.mp4"
+                
                 ydl_opts_download = {
-                    'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]',
-                    'outtmpl': 'downloaded_clip.%(ext)s',
-                    'force_keyframes_at_cuts': True,
-                    'download_ranges': lambda info, ctx: [{
-                        'start_time': sum(x * int(t) for x, t in zip([3600, 60, 1], res_data['start_time'].split(':'))),
-                        'end_time': sum(x * int(t) for x, t in zip([3600, 60, 1], res_data['end_time'].split(':'))),
-                    }],
+                    'format': '18/best[ext=mp4]', 
+                    'outtmpl': raw_download_template,
                     'quiet': True,
-                    'no_warnings': True
+                    'no_warnings': True,
                 }
                 
-                # Hapus file sisa proses sebelumnya jika ada
-                for temp_file in ['downloaded_clip.mp4', 'downloaded_clip.mkv', output_filename]:
+                # Bersihkan sisa file proses sebelumnya jika masih ada
+                for temp_file in [raw_download_template, output_filename]:
                     if os.path.exists(temp_file):
                         try: os.remove(temp_file)
                         except: pass
@@ -136,21 +132,26 @@ if st.button("🚀 Mulai Proses Video", type="primary"):
                 with yt_dlp.YoutubeDL(ydl_opts_download) as ydl:
                     ydl.download([youtube_url])
                 
-                downloaded_file = 'downloaded_clip.mp4' if os.path.exists('downloaded_clip.mp4') else 'downloaded_clip.mkv'
-                
-                if os.path.exists(downloaded_file):
-                    # Melakukan Center Crop (9:16) dari potongan file lokal via FFmpeg
+                if os.path.exists(raw_download_template):
+                    status.update(label="✂️ Memotong durasi & melakukan Center Crop (9:16) via FFmpeg...", state="running")
+                    
+                    # FFmpeg memotong file lokal, dijamin bebas eror jaringan kode 8
                     ffmpeg_cmd = [
                         'ffmpeg',
-                        '-i', downloaded_file,
+                        '-ss', res_data['start_time'], 
+                        '-to', res_data['end_time'], 
+                        '-i', raw_download_template,
                         '-vf', "crop=ih*(9/16):ih",
-                        '-c:v', 'libx264', '-preset', 'veryfast',
+                        '-c:v', 'libx264', 
+                        '-preset', 'veryfast',
                         '-c:a', 'aac',
                         '-y', output_filename
                     ]
+                    
                     subprocess.run(ffmpeg_cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                     
-                    try: os.remove(downloaded_file)
+                    # Hapus berkas video utuh yang mentah untuk mengosongkan memori penyimpanan server
+                    try: os.remove(raw_download_template)
                     except: pass
                 
                 if os.path.exists(output_filename):
@@ -161,12 +162,12 @@ if st.button("🚀 Mulai Proses Video", type="primary"):
                     st.balloons()
                 else:
                     status.update(label="❌ Gagal membuat klip video.", state="error")
-                    st.error("Format video YouTube tidak mendukung pemotongan langsung. Silakan coba link video lain.")
+                    st.error("Proses kompilasi video oleh FFmpeg gagal dilakukan. Silakan periksa kembali ketersediaan sistem.")
         
         except Exception as e:
             st.error(f"Terjadi kesalahan teknis: {str(e)}")
 
-# Tampilkan hasil di luar blok st.button agar persisten saat halaman reload / tombol download dipicu
+# ==================== KODE DI LUAR TOMBOL UTAMA ====================
 if st.session_state.clip_ready and st.session_state.video_bytes:
     col1, col2 = st.columns(2)
     res_data = st.session_state.res_data
