@@ -110,14 +110,13 @@ if st.button("🚀 Mulai Proses Video", type="primary"):
                 st.info(f"**Alasan Pilihan AI:** {res_data['reason']}")
                 st.metric("Target Potongan Waktu", f"{res_data['start_time']} - {res_data['end_time']}")
                 
-                status.update(label="🎬 Mengunduh video dasar dari YouTube secara utuh...", state="running")
+                status.update(label="🎬 Mengunduh video dari YouTube...", state="running")
                 
-                # Mengunduh video format ringan (18 = 360p mp4 dengan audio terintegrasi)
-                # Ini cara paling aman agar tidak diblokir status 403 oleh server YouTube
                 raw_download_template = "full_downloaded_video.mp4"
                 
+                # PERBAIKAN DI SINI: Menggunakan seleksi format universal mp4 agar aman dan kompatibel untuk semua video
                 ydl_opts_download = {
-                    'format': '18/best[ext=mp4]', 
+                    'format': 'best[ext=mp4]', 
                     'outtmpl': raw_download_template,
                     'quiet': True,
                     'no_warnings': True,
@@ -135,7 +134,6 @@ if st.button("🚀 Mulai Proses Video", type="primary"):
                 if os.path.exists(raw_download_template):
                     status.update(label="✂️ Memotong durasi & melakukan Center Crop (9:16) via FFmpeg...", state="running")
                     
-                    # FFmpeg memotong file lokal, dijamin bebas eror jaringan kode 8
                     ffmpeg_cmd = [
                         'ffmpeg',
                         '-ss', res_data['start_time'], 
@@ -150,7 +148,6 @@ if st.button("🚀 Mulai Proses Video", type="primary"):
                     
                     subprocess.run(ffmpeg_cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                     
-                    # Hapus berkas video utuh yang mentah untuk mengosongkan memori penyimpanan server
                     try: os.remove(raw_download_template)
                     except: pass
                 
