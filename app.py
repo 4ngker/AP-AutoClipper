@@ -112,39 +112,46 @@ if st.button("🚀 Mulai Proses Video", type="primary"):
                 st.info(f"**Alasan Pilihan AI:** {res_data['reason']}")
                 st.metric("Target Potongan Waktu", f"{res_data['start_time']} - {res_data['end_time']}")
                 
-                status.update(label="🎬 Mengekstrak streaming langsung & melakukan Center Crop (9:16)...", state="running")
+                status.update(label="🎬 Mengunduh & memotong video secara aman...", state="running")
                 
-                with yt_dlp.YoutubeDL({'format': 'bestvideo+bestaudio/best', 'quiet': True, 'no_warnings': True}) as ydl:
-                    real_info = ydl.extract_info(youtube_url, download=False)
-                    if 'requested_formats' in real_info:
-                        video_url = real_info['requested_formats'][0]['url']
-                        audio_url = real_info['requested_formats'][1]['url']
-                        
-                        ffmpeg_cmd = [
-                            'ffmpeg',
-                            '-ss', res_data['start_time'], '-to', res_data['end_time'], '-i', video_url,
-                            '-ss', res_data['start_time'], '-to', res_data['end_time'], '-i', audio_url,
-                            '-vf', "crop=ih*(9/16):ih",
-                            '-c:v', 'libx264', '-preset', 'veryfast',
-                            '-c:a', 'aac', '-map', '0:v:0', '-map', '1:a:0',
-                            '-y', output_filename
-                        ]
-                    else:
-                        stream_url = real_info['url']
-                        ffmpeg_cmd = [
-                            'ffmpeg',
-                            '-ss', res_data['start_time'], '-to', res_data['end_time'], '-i', stream_url,
-                            '-vf', "crop=ih*(9/16):ih",
-                            '-c:v', 'libx264', '-preset', 'veryfast',
-                            '-c:a', 'aac',
-                            '-y', output_filename
-                        ]
+                # Menggunakan fitur download bagian tertentu (download sections) bawaan yt-dlp secara presisi
+                ydl_opts_download = {
+                    'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]',
+                    'outtmpl': 'downloaded_clip.%(ext)s',
+                    'force_keyframes_at_cuts': True,
+                    'download_ranges': lambda info, ctx: [{
+                        'start_time': sum(x * int(t) for x, t in zip([3600, 60, 1], res_data['start_time'].split(':'))),
+                        'end_time': sum(x * int(t) for x, t in zip([3600, 60, 1], res_data['end_time'].split(':'))),
+                    }],
+                    'quiet': True,
+                    'no_warnings': True
+                }
                 
-                if os.path.exists(output_filename):
-                    try: os.remove(output_filename)
+                # Hapus file sisa proses sebelumnya jika ada
+                for temp_file in ['downloaded_clip.mp4', 'downloaded_clip.mkv', output_filename]:
+                    if os.path.exists(temp_file):
+                        try: os.remove(temp_file)
+                        except: pass
+                
+                with yt_dlp.YoutubeDL(ydl_opts_download) as ydl:
+                    ydl.download([youtube_url])
+                
+                downloaded_file = 'downloaded_clip.mp4' if os.path.exists('downloaded_clip.mp4') else 'downloaded_clip.mkv'
+                
+                if os.path.exists(downloaded_file):
+                    # Melakukan Center Crop (9:16) dari potongan file lokal via FFmpeg
+                    ffmpeg_cmd = [
+                        'ffmpeg',
+                        '-i', downloaded_file,
+                        '-vf', "crop=ih*(9/16):ih",
+                        '-c:v', 'libx264', '-preset', 'veryfast',
+                        '-c:a', 'aac',
+                        '-y', output_filename
+                    ]
+                    subprocess.run(ffmpeg_cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                    
+                    try: os.remove(downloaded_file)
                     except: pass
-                
-                subprocess.run(ffmpeg_cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                 
                 if os.path.exists(output_filename):
                     with open(output_filename, 'rb') as f:
@@ -159,8 +166,7 @@ if st.button("🚀 Mulai Proses Video", type="primary"):
         except Exception as e:
             st.error(f"Terjadi kesalahan teknis: {str(e)}")
 
-# ==================== KODE DI LUAR TOMBOL UTAMA ====================
-# Kode ini ditaruh di luar block `st.button` agar tetap muncul saat halaman reload / tombol download ditekan
+# Tampilkan hasil di luar blok st.button agar persisten saat halaman reload / tombol download dipicu
 if st.session_state.clip_ready and st.session_state.video_bytes:
     col1, col2 = st.columns(2)
     res_data = st.session_state.res_data
