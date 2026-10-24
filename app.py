@@ -110,13 +110,15 @@ if st.button("🚀 Mulai Proses Video", type="primary"):
                 st.info(f"**Alasan Pilihan AI:** {res_data['reason']}")
                 st.metric("Target Potongan Waktu", f"{res_data['start_time']} - {res_data['end_time']}")
                 
-                status.update(label="🎬 Mengunduh video dari YouTube...", state="running")
+                status.update(label="🎬 Mengunduh video dari YouTube secara otomatis...", state="running")
                 
                 raw_download_template = "full_downloaded_video.mp4"
                 
-                # PERBAIKAN DI SINI: Menggunakan seleksi format universal mp4 agar aman dan kompatibel untuk semua video
+                # PERBAIKAN UTAMA: Menggunakan strategi sorting format alih-alih filter kaku -f
                 ydl_opts_download = {
-                    'format': 'best[ext=mp4]', 
+                    'format': 'bestvideo+bestaudio/best',
+                    'format_sort': ['vcodec:h264', 'res:720', 'acodec:aac'],
+                    'merge_output_format': 'mp4',
                     'outtmpl': raw_download_template,
                     'quiet': True,
                     'no_warnings': True,
@@ -159,7 +161,7 @@ if st.button("🚀 Mulai Proses Video", type="primary"):
                     st.balloons()
                 else:
                     status.update(label="❌ Gagal membuat klip video.", state="error")
-                    st.error("Proses kompilasi video oleh FFmpeg gagal dilakukan. Silakan periksa kembali ketersediaan sistem.")
+                    st.error("Proses kompilasi video oleh FFmpeg gagal dilakukan. Silakan periksa kembali ketersediaan file video.")
         
         except Exception as e:
             st.error(f"Terjadi kesalahan teknis: {str(e)}")
