@@ -91,7 +91,7 @@ if st.button("🚀 Mulai Proses Video", type="primary"):
                 }}
                 """
                 
-                # IMPLEMENTASI RETRY OTOMATIS JIKA SERVER GEMINI BUSY (503)
+                # DIKEMBALIKAN KE GEMINI-3.8-FLASH DENGAN RETRY OTOMATIS JIKA SERVER PADAT
                 response = None
                 max_retries = 5
                 wait_time = 4
@@ -99,13 +99,13 @@ if st.button("🚀 Mulai Proses Video", type="primary"):
                 for attempt in range(max_retries):
                     try:
                         response = client.models.generate_content(
-                            model='gemini-2.5-flash',
+                            model='gemini-3.8-flash',
                             contents=prompt
                         )
                         break
                     except Exception as ai_err:
-                        # Jika terdeteksi masalah kelebihan beban server (503 / UNAVAILABLE)
-                        if ("503" in str(ai_err) or "UNAVAILABLE" in str(ai_err)) and attempt < max_retries - 1:
+                        # Jika terdeteksi masalah beban server penuh (503 / RESOURCE_EXHAUSTED / UNAVAILABLE)
+                        if ("503" in str(ai_err) or "UNAVAILABLE" in str(ai_err) or "RESOURCE" in str(ai_err)) and attempt < max_retries - 1:
                             st.warning(f"Server Google Gemini sedang padat. Mencoba kembali otomatis dalam {wait_time} detik... ({attempt+1}/{max_retries})")
                             time.sleep(wait_time)
                             wait_time += 3  # Menambah jeda waktu tunggu secara bertahap
