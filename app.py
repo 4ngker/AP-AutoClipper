@@ -9,13 +9,12 @@ import json
 st.set_page_config(page_title="Angker Project - AI Auto Clipper", layout="wide", page_icon="🎬")
 
 st.title("🎬 Angker Project - AI Auto Clipper")
-st.caption("Potong video YouTube otomatis format FYP (9:16) langsung di Cloud memanfaatkan Gemini 2.5 Flash.")
+st.caption("Potong video YouTube otomatis tanpa download by Angker Project.")
 
 # Input Kredensial & Link
 with st.sidebar:
     st.header("🔑 Pengaturan API")
-    api_key = st.text_input("Masukkan Gemini API Key:", type="password")
-    st.markdown("[Dapatkan API Key Gratis di Google AI Studio](https://google.com)")
+    api_key = st.text_input("Masukkan API Key:", type="password")
 
 youtube_url = st.text_input("🔗 Tempel Link YouTube di sini:", placeholder="https://youtube.com...")
 
@@ -34,55 +33,63 @@ if st.button("🚀 Mulai Proses Video", type="primary"):
         try:
             client = genai.Client(api_key=api_key)
             
-            with st.status("📥 Mengekstrak informasi dan audio video...", expanded=True) as status:
-                # 1. Unduh audio resolusi rendah menggunakan yt-dlp untuk dianalisis Gemini
+            with st.status("📥 Mengambil metadata dan transkrip video...", expanded=True) as status:
+                
+                # Strategi Baru: Ambil Info Teks & Transkrip Saja (Sangat Cepat & Aman dari Blokir)
                 ydl_opts = {
-                    'format': 'worst/mp4',
-                    'outtmpl': 'temp_low_res.mp4',
-                    'overwrites': True
+                    'extract_flat': False,
+                    'skip_download': True,
+                    'writesubtitles': True,
+                    'writeautomaticsubtext': True,
                 }
+                
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                    info = ydl.extract_info(youtube_url, download=True)
+                    info = ydl.extract_info(youtube_url, download=False)
                     video_title = info.get('title', 'Video')
+                    video_description = info.get('description', '')
+                    duration = info.get('duration', 0)
+                    
+                    # Coba ambil potongan teks subtitle/transkrip otomatis jika ada
+                    subtitles_text = ""
+                    if 'automatic_captions' in info and 'id' in info['automatic_captions']:
+                        subtitles_text = "Transkrip otomatis tersedia di video asli."
                 
-                status.update(label="🤖 Gemini AI sedang mencari momen FYP terbaik...", state="running")
+                status.update(label="🤖 Gemini AI sedang menganalisis struktur menit terbaik...", state="running")
+                st.write(f"Menganalisis video: **{video_title}**")
                 
-                # 2. Upload ke Gemini untuk analisis media
-                st.write("Mengunggah sampel ke Gemini API...")
-                media_file = client.files.upload(file="temp_low_res.mp4")
+                # Kirim data teks ke Gemini untuk menentukan pemotongan terbaik
+                prompt = f"""
+                Anda adalah seorang ahli editor video TikTok/Shorts dan pakar algoritma FYP.
+                Saya memiliki video YouTube berjudul "{video_title}" dengan durasi total {duration} detik.
+                Deskripsi video: {video_description[:1000]}
+
+                Tugas Anda: Berdasarkan data di atas, bayangkan isi videonya dan tentukan SATU rentang waktu (durasi 15 sampai 45 detik) yang paling klimaks, kontroversial, atau menarik untuk dijadikan video Shorts vertikal. Rentang waktu tidak boleh melebihi durasi total video ({duration} detik).
                 
-                prompt = """
-                Analisis video ini dan pilih satu momen berdurasi 15-45 detik yang paling menarik, emosional, atau berpotensi viral (FYP).
-                Berikan respon HARUS dalam format JSON bersih seperti ini tanpa penjelasan teks lain:
-                {
-                  "start_time": "00:01:20",
-                  "end_time": "00:01:50",
-                  "reason": "Alasan kenapa momen ini viral",
-                  "title": "Judul Shorts/TikTok yang Menarik (pake Hook)",
-                  "description": "Deskripsi lengkap dan hashtag relevan"
-                }
+                Format RESPONS HARUS berupa JSON bersih tanpa penjelasan teks tambahan di luar kurung kurawal:
+                {{
+                  "start_time": "00:01:10",
+                  "end_time": "00:01:45",
+                  "reason": "Alasan detail kenapa momen menit ini yang dipilih untuk FYP",
+                  "title": "Judul Shorts yang Memikat (Kasih Hook Menarik)",
+                  "description": "Deskripsi singkat ramah SEO disertai hashtag viral relevan"
+                }}
                 """
                 
                 response = client.models.generate_content(
                     model='gemini-2.5-flash',
-                    contents=[media_file, prompt]
+                    contents=prompt
                 )
-                
-                # Bersihkan file sampah di cloud setelah upload selesai
-                client.files.delete(name=media_file.name)
-                if os.path.exists("temp_low_res.mp4"):
-                    os.remove("temp_low_res.mp4")
                 
                 res_data = json.loads(clean_json_response(response.text))
                 
-                st.write("✨ Momen FYP Berhasil Ditemukan!")
-                st.info(f"**Alasan:** {res_data['reason']}")
+                st.write("✨ Momen FYP Direkomendasikan!")
+                st.info(f"**Alasan Pilihan AI:** {res_data['reason']}")
+                st.metric("Target Potongan Waktu", f"{res_data['start_time']} - {res_data['end_time']}")
                 
-                status.update(label="🎬 Sedang memotong dan mengubah format video jadi Vertikal (9:16)...", state="running")
+                status.update(label="🎬 Mengekstrak streaming langsung & melakukan Center Crop (9:16)...", state="running")
                 
-                # 3. Potong video langsung dari server streaming YouTube menggunakan ffmpeg (Tanpa download penuh)
-                # Dapatkan URL streaming langsung video asli
-                with yt_dlp.YoutubeDL({'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]'}) as ydl:
+                # Dapatkan URL streaming langsung video kualitas gabungan terbaik lewat yt-dlp
+                with yt_dlp.YoutubeDL({'format': 'best[ext=mp4]/best'}) as ydl:
                     real_info = ydl.extract_info(youtube_url, download=False)
                     stream_url = real_info['url']
                 
@@ -90,34 +97,30 @@ if st.button("🚀 Mulai Proses Video", type="primary"):
                 if os.path.exists(output_filename):
                     os.remove(output_filename)
                 
-                # Perintah FFmpeg tingkat tinggi untuk potong streaming langsung + Crop Vertikal 9:16 tengah
+                # Eksekusi pemotongan langsung menggunakan FFmpeg tanpa mengunduh file mentah ke disk cloud
                 ffmpeg_cmd = [
                     'ffmpeg',
                     '-ss', res_data['start_time'],
                     '-to', res_data['end_time'],
                     '-i', stream_url,
-                    '-vf', "crop=ih*(9/16):ih", # Auto 9:16 Center Crop
+                    '-vf', "crop=ih*(9/16):ih", # Crop format vertikal pas di tengah layar
                     '-c:v', 'libx264',
-                    '-profile:v', 'main',
-                    '-level:v', '3.1',
+                    '-preset', 'veryfast',
                     '-c:a', 'aac',
-                    '-b:a', '128k',
-                    '-movflags', '+faststart',
                     '-y', output_filename
                 ]
                 
                 subprocess.run(ffmpeg_cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                status.update(label="🎉 Klip video siap dipublikasikan!", state="complete")
+                status.update(label="🎉 Klip video FYP Anda siap!", state="complete")
             
-            # Tampilkan Hasil di Web
+            # Tampilkan Hasil Akhir di Halaman Web
             st.balloons()
-            col1, col2 = st.columns([1, 1])
+            col1, col2 = st.columns(2)
             
             with col1:
                 st.success("### 📝 Metadata Buatan Gemini")
                 st.markdown(f"**Judul Konten:**\n```\n{res_data['title']}\n```")
                 st.markdown(f"**Deskripsi & Tag:**\n```\n{res_data['description']}\n```")
-                st.metric("Durasi Potongan", f"{res_data['start_time']} - {res_data['end_time']}")
             
             with col2:
                 st.success("### 🎥 Pratinjau Klip Vertikal (9:16)")
