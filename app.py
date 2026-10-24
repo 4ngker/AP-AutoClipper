@@ -12,6 +12,14 @@ st.set_page_config(page_title="Angker Project - AI Auto Clipper", layout="wide",
 st.title("🎬 Angker Project - AI Auto Clipper")
 st.caption("Potong video YouTube otomatis tanpa download by Angker Project.")
 
+# Inisialisasi Session State agar data tidak hilang saat reload
+if "clip_ready" not in st.session_state:
+    st.session_state.clip_ready = False
+if "res_data" not in st.session_state:
+    st.session_state.res_data = None
+if "video_bytes" not in st.session_state:
+    st.session_state.video_bytes = None
+
 # Input Kredensial & Link di Sidebar
 with st.sidebar:
     st.header("🔑 Pengaturan API")
@@ -26,6 +34,8 @@ def clean_json_response(text):
         return match.group(0)
     return text
 
+output_filename = "fyp_clip.mp4"
+
 if st.button("🚀 Mulai Proses Video", type="primary"):
     if not api_key:
         st.error("Silakan masukkan Gemini API Key terlebih dahulu di sidebar!")
@@ -33,11 +43,14 @@ if st.button("🚀 Mulai Proses Video", type="primary"):
         st.error("Silakan masukkan link YouTube!")
     else:
         try:
+            # Reset state sebelum mulai proses baru
+            st.session_state.clip_ready = False
+            st.session_state.res_data = None
+            st.session_state.video_bytes = None
+            
             client = genai.Client(api_key=api_key)
             
             with st.status("📥 Mengambil metadata dan transkrip video...", expanded=True) as status:
-                
-                # Gunakan parameter universal agar aman membaca info dasar video dari server mana pun
                 ydl_opts = {
                     'extract_flat': False,
                     'skip_download': True,
@@ -73,7 +86,6 @@ if st.button("🚀 Mulai Proses Video", type="primary"):
                 }}
                 """
                 
-                # SISTEM RETRY AGRESIF (MENGATASI ERROR JIKA SERVER GOOGLE PADAT)
                 response = None
                 max_retries = 5
                 wait_time = 5
@@ -94,6 +106,7 @@ if st.button("🚀 Mulai Proses Video", type="primary"):
                             raise ai_err
                 
                 res_data = json.loads(clean_json_response(response.text))
+                st.session_state.res_data = res_data
                 
                 st.write("✨ Momen FYP Direkomendasikan!")
                 st.info(f"**Alasan Pilihan AI:** {res_data['reason']}")
@@ -101,10 +114,8 @@ if st.button("🚀 Mulai Proses Video", type="primary"):
                 
                 status.update(label="🎬 Mengekstrak streaming langsung & melakukan Center Crop (9:16)...", state="running")
                 
-                # UPDATE: Menggunakan format universal 'bestvideo+bestaudio/best' untuk stabilitas ekstra di Cloud
                 with yt_dlp.YoutubeDL({'format': 'bestvideo+bestaudio/best', 'quiet': True, 'no_warnings': True}) as ydl:
                     real_info = ydl.extract_info(youtube_url, download=False)
-                    # Menangani format jika video dan audio terpisah (Dapatkan URL masing-masing komponen)
                     if 'requested_formats' in real_info:
                         video_url = real_info['requested_formats'][0]['url']
                         audio_url = real_info['requested_formats'][1]['url']
@@ -116,10 +127,9 @@ if st.button("🚀 Mulai Proses Video", type="primary"):
                             '-vf', "crop=ih*(9/16):ih",
                             '-c:v', 'libx264', '-preset', 'veryfast',
                             '-c:a', 'aac', '-map', '0:v:0', '-map', '1:a:0',
-                            '-y', "fyp_clip.mp4"
+                            '-y', output_filename
                         ]
                     else:
-                        # Jika kebetulan format gabungan langsung tersedia
                         stream_url = real_info['url']
                         ffmpeg_cmd = [
                             'ffmpeg',
@@ -127,40 +137,46 @@ if st.button("🚀 Mulai Proses Video", type="primary"):
                             '-vf', "crop=ih*(9/16):ih",
                             '-c:v', 'libx264', '-preset', 'veryfast',
                             '-c:a', 'aac',
-                            '-y', "fyp_clip.mp4"
+                            '-y', output_filename
                         ]
                 
-                output_filename = "fyp_clip.mp4"
                 if os.path.exists(output_filename):
                     try: os.remove(output_filename)
                     except: pass
                 
-                # Jalankan perintah perakitan klip video vertikal
                 subprocess.run(ffmpeg_cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                status.update(label="🎉 Klip video FYP Anda siap!", state="complete")
-            
-            # Tampilkan Hasil Akhir di Halaman Web
-            st.balloons()
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                st.success("### 📝 Metadata Buatan Gemini")
-                st.markdown(f"**Judul Konten:**\n```\n{res_data['title']}\n```")
-                st.markdown(f"**Deskripsi & Tag:**\n```\n{res_data['description']}\n```")
-            
-            with col2:
-                st.success("### 🎥 Pratinjau Klip Vertikal (9:16)")
+                
                 if os.path.exists(output_filename):
                     with open(output_filename, 'rb') as f:
-                        video_bytes = f.read()
-                    st.video(video_bytes)
-                    st.download_button(
-                        label="📥 UNDUH VIDEO SIAP PAKAI",
-                        data=video_bytes,
-                        file_name=f"FYP_{res_data['title'][:20].replace(' ', '_')}.mp4",
-                        mime="video/mp4",
-                        use_container_width=True
-                    )
+                        st.session_state.video_bytes = f.read()
+                    st.session_state.clip_ready = True
+                    status.update(label="🎉 Klip video FYP Anda siap!", state="complete")
+                    st.balloons()
+                else:
+                    status.update(label="❌ Gagal membuat klip video.", state="error")
+                    st.error("Format video YouTube tidak mendukung pemotongan langsung. Silakan coba link video lain.")
         
         except Exception as e:
-            st.error(f"Terjadi kesalahan teknis: {str(e)}\n\nTips: Silakan tunggu beberapa saat lalu coba klik kembali tombol 'Mulai Proses Video'.")
+            st.error(f"Terjadi kesalahan teknis: {str(e)}")
+
+# ==================== KODE DI LUAR TOMBOL UTAMA ====================
+# Kode ini ditaruh di luar block `st.button` agar tetap muncul saat halaman reload / tombol download ditekan
+if st.session_state.clip_ready and st.session_state.video_bytes:
+    col1, col2 = st.columns(2)
+    res_data = st.session_state.res_data
+    
+    with col1:
+        st.success("### 📝 Metadata Buatan Gemini")
+        st.markdown(f"**Judul Konten:**\n```\n{res_data['title']}\n```")
+        st.markdown(f"**Deskripsi & Tag:**\n```\n{res_data['description']}\n```")
+    
+    with col2:
+        st.success("### 🎥 Pratinjau Klip Vertikal (9:16)")
+        st.video(st.session_state.video_bytes)
+        st.download_button(
+            label="📥 UNDUH VIDEO SIAP PAKAI",
+            data=st.session_state.video_bytes,
+            file_name=f"FYP_{res_data['title'][:20].replace(' ', '_')}.mp4",
+            mime="video/mp4",
+            use_container_width=True
+        )
