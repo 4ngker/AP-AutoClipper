@@ -5,6 +5,7 @@ import os
 import subprocess
 import re
 import json
+import time
 
 st.set_page_config(page_title="Angker Project - AI Auto Clipper", layout="wide", page_icon="🎬")
 
@@ -36,7 +37,6 @@ if st.button("🚀 Mulai Proses Video", type="primary"):
             
             with st.status("📥 Mengambil metadata dan transkrip video...", expanded=True) as status:
                 
-                # Menambahkan 'remote-components' untuk mengunduh modul EJS anti-blokir langsung dari GitHub
                 ydl_opts = {
                     'extract_flat': False,
                     'skip_download': True,
@@ -73,10 +73,22 @@ if st.button("🚀 Mulai Proses Video", type="primary"):
                 }}
                 """
                 
-                response = client.models.generate_content(
-                    model='gemini-1.5-flash',
-                    contents=prompt
-                )
+                # SISTEM AUTO-RETRY OTOMATIS JIKA SERVER GOOGLE PADAT
+                response = None
+                max_retries = 3
+                for attempt in range(max_retries):
+                    try:
+                        response = client.models.generate_content(
+                            model='gemini-2.5-flash',
+                            contents=prompt
+                        )
+                        break # Sukses, keluar dari loop retry
+                    except Exception as ai_err:
+                        if attempt < max_retries - 1:
+                            st.warning(f"Server Google sedang sibuk (Mencoba kembali otomatis dalam 5 detik... Percobaan {attempt+1}/{max_retries})")
+                            time.sleep(5)
+                        else:
+                            raise ai_err # Lempar eror jika sudah 3 kali gagal
                 
                 res_data = json.loads(clean_json_response(response.text))
                 
@@ -86,7 +98,6 @@ if st.button("🚀 Mulai Proses Video", type="primary"):
                 
                 status.update(label="🎬 Mengekstrak streaming langsung & melakukan Center Crop (9:16)...", state="running")
                 
-                # Penyesuaian parameter streaming aman untuk memotong video secara fisik
                 with yt_dlp.YoutubeDL({'format': 'best[ext=mp4]/best', 'params': {'remote_components': 'ejs:github'}}) as ydl:
                     real_info = ydl.extract_info(youtube_url, download=False)
                     stream_url = real_info['url']
@@ -134,4 +145,4 @@ if st.button("🚀 Mulai Proses Video", type="primary"):
                     )
         
         except Exception as e:
-            st.error(f"Terjadi kesalahan teknis: {str(e)}\n\nTips: Jika server Google sedang padat, silakan klik tombol 'Mulai Proses Video' lagi dalam 10-30 detik.")
+            st.error(f"Terjadi kesalahan teknis: {str(e)}\n\nTips: Silakan tunggu beberapa saat lalu klik tombol 'Mulai Proses Video' kembali.")
